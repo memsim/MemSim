@@ -14,7 +14,7 @@ public:
 	void write(int index, unsigned char pattern);
 	
 	// Return a pattern of a specific element
-	unsigned char read(int index, unsigned char pattern);
+	unsigned char read(int index);
 	
 	// Destructor, deallocate the memory array
 	~MemoryDevice();
