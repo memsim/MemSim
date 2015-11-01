@@ -38,17 +38,27 @@ int _tmain(int argc, _TCHAR* argv[])
 	cout << " = " << devTest.get_last_op_code() << endl;
 	cout << devTest.read_pattern(0) << endl;
 
-	// test function write_bit 
-	bool nts[8] = { 1, 0, 1, 1, 1, 0, 1, 0 };
+	// test method write_bit 
+	bool w_bits[8] = { 1, 0, 1, 1, 1, 0, 1, 0 };
 	
 	for (i = 0; i < 8; i++){
-		devTest.write_bit(1, i, nts[i]);
+		devTest.write_bit(1, i, w_bits[i]);
 		cout << "op_code = " << devTest.get_last_op_code_string();// << endl;
 		cout << " = " << devTest.get_last_op_code() << endl;
 	}
 	cout << devTest.read_pattern(1) << endl;
 
-	// test function read_bit
+	// test method read_bit
+	char bits_read[9];
+
+	for (i = 0; i < 8; i++){
+		*(bits_read + i) = devTest.read_bit(1, i) ? '1' : '0';
+		cout << "op_code = " << devTest.get_last_op_code_string();// << endl;
+		cout << " = " << devTest.get_last_op_code() << endl;
+	}
+	*(bits_read + 8) = '\0';
+	cout << bits_read << endl;
+
 	return 0;
 }
 

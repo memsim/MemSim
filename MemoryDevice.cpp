@@ -102,8 +102,36 @@ unsigned char MemoryDevice::read_pattern(unsigned int index)
 
 bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 {
+	unsigned char pattern;
+	unsigned char bit_state;
+	unsigned int op_bits, add_bits, cell_bits, op_code;
+
+	pattern = *(block + index);
+
+	// verify bit state 0 or 1
+	bit_state = (pattern & BIT_MASK[bit]) >> bit;
+
+	// define code for this operation
+
+	if (bit_state) // define operation bits for a read operation
+		op_bits = 5 << 29;
+	else
+		op_bits = 4 << 29;;
+
+	add_bits = index << 3; // define element address bits
+	cell_bits = bit; // define cell operation bits
+
+	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
+
+	last_op_code = op_code;
+
 	// looking for fault
-	return true;
+	// compare operation code for the performed operation with some fault
+
+	// performing read operation
+	pattern = pattern & (~BIT_MASK[bit]); // clear bit to be set
+
+	return bit_state ? true : false;
 }
 
 
