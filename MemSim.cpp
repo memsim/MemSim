@@ -52,9 +52,27 @@ int _tmain(int argc, _TCHAR* argv[])
 	char bits_read[9];
 
 	for (i = 0; i < 8; i++){
-		*(bits_read + i) = devTest.read_bit(1, i) ? '1' : '0';
+		*(bits_read + 7 - i) = devTest.read_bit(1, i) ? '1' : '0';
 		cout << "op_code = " << devTest.get_last_op_code_string();// << endl;
 		cout << " = " << devTest.get_last_op_code() << endl;
+	}
+	*(bits_read + 8) = '\0';
+	cout << bits_read << endl;
+
+	// test simple fault single cell
+	devTest.apply_simple_fault_single_cell(1073741832, 1, NULL);
+	devTest.write_bit(1, 0, 0);
+	cout << "op_code = " << devTest.get_last_op_code_string();// << endl;
+	cout << " = " << devTest.get_last_op_code() << endl;
+	cout << devTest.read_pattern(1) << endl;
+	devTest.write_bit(1, 1, 1);
+	cout << "op_code = " << devTest.get_last_op_code_string();// << endl;
+	cout << " = " << devTest.get_last_op_code() << endl;
+	cout << devTest.read_pattern(1) << endl;
+
+	//show bits
+	for (i = 0; i < 8; i++){
+		*(bits_read + 7 - i) = devTest.read_bit(1, i) ? '1' : '0';
 	}
 	*(bits_read + 8) = '\0';
 	cout << bits_read << endl;

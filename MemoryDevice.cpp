@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "MemoryDevice.h"
-#include <iostream>
+
 using namespace std;
 
 const unsigned char BIT_MASK[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
@@ -9,10 +9,21 @@ char *priv_string = (char *)malloc(sizeof(char) * (s_size + 1)); // to test
 
 MemoryDevice::MemoryDevice(int n_elements)
 {
+	int i;
 	n_blocks = n_elements;
 
+	// allocating memory array 
 	block = (unsigned char *)malloc(sizeof(unsigned char)*n_elements);
-	//teste if it was allocated
+	// allocating pointer to the fault primitives
+	fp_list = (FP **)malloc(sizeof(FP *)*n_elements);
+
+	//teste if all it was allocated
+
+	// inicialize memory array with 0s e fr_list with NULLs
+	for (i = 0; i < n_blocks; i++){
+		*(block + i) = 0;
+		*(fp_list + i) = NULL;
+	}
 }
 
 int MemoryDevice::get_number_of_blocks()
@@ -53,7 +64,8 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	unsigned char pattern;
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
-	
+	FP fp;
+
 	pattern = *(block + index);
 
 	// verify bit state 0 or 1
@@ -78,12 +90,19 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
 
 	last_op_code = op_code;
-
+	
 	//cout << "op_code = " << op_code << endl;
 
 	// looking for fault
-	// compare operation code for the performed operation with some fault
-	
+	if (*(fp_list + index) != NULL){
+		fp = **(fp_list + index);
+		if (op_code == fp.Sa){// compare operation code for the performed operation with fault
+			if (fp.Sv == NULL){
+				// Applying fault
+				value = fp.fault;
+			}
+		}
+	}
 	// performing write operation
 	pattern = pattern & (~BIT_MASK[bit]); // clear bit to be set
 
@@ -105,7 +124,8 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 	unsigned char pattern;
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
-
+	FP fp;
+	
 	pattern = *(block + index);
 
 	// verify bit state 0 or 1
@@ -123,20 +143,61 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 
 	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
 
+	// looking for fault
+	if (*(fp_list + index) != NULL){
+		fp = **(fp_list + index);
+		if (op_code == fp.Sa){// compare operation code for the performed operation with fault
+			if (fp.Sv == NULL){
+				// Applying fault
+				pattern = pattern & (~BIT_MASK[bit]); // clear bit to be set
+
+				if (fp.fault){
+					pattern = pattern ^ BIT_MASK[bit];
+				}
+
+				*(block + index) = pattern;
+
+				// Applying read output
+				bit_state = fp.read;
+			}
+		}
+	}
+	// save last operation performed
 	last_op_code = op_code;
 
-	// looking for fault
-	// compare operation code for the performed operation with some fault
-
 	// performing read operation
-	pattern = pattern & (~BIT_MASK[bit]); // clear bit to be set
-
 	return bit_state ? true : false;
 }
 
+void MemoryDevice::apply_simple_fault_single_cell(unsigned int Sa, bool F, bool R)
+{
+	int index = (536870904 & Sa) >> 3;
+	FP *fp = (FP *)malloc(sizeof(FP));
+
+	(*fp).Sa = Sa;
+	(*fp).Sv = NULL;
+	(*fp).fault = F;
+	(*fp).read = R;
+	
+	*(fp_list + index) = fp;
+}
+
+void MemoryDevice::apply_simple_fault_two_cell(unsigned int Sa, unsigned int Sv, bool F, bool R)
+{
+	int index = (536870904 & Sa) >> 3;
+	FP *fp = (FP *)malloc(sizeof(FP));
+
+	(*fp).Sa = Sa;
+	(*fp).Sv = Sv;
+	(*fp).fault = F;
+	(*fp).read = R;
+
+	*(fp_list + index) = fp;
+}
 
 MemoryDevice::~MemoryDevice()
 {
 	free(block);
 	free(priv_string); // to test
+	//free fault primitives
 }
