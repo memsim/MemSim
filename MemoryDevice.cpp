@@ -7,6 +7,66 @@ const unsigned char BIT_MASK[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
 const int s_size = 39;
 char *priv_string = (char *)malloc(sizeof(char) * (s_size + 1)); // to test
 
+unsigned int stringToOpcode2(char *string, int index, int cell)
+{
+	unsigned int op_bits, add_bits, cell_bits, op_code;
+
+	if (*(string + 1) == 'w'){
+		if (*(string + 0) == '0')
+			if (*(string + 2) == '0')
+				op_bits = 0;
+			else
+				op_bits = 1 << 29;
+		else
+			if (*(string + 2) == '0')
+				op_bits = 2 << 29;
+			else
+				op_bits = 3 << 29;
+	}
+	else{
+		if (*(string + 1) == 'r'){
+			if (*(string + 0) == '0')
+				op_bits = 4 << 29;
+			else
+				op_bits = 5 << 29;
+		}
+		else{
+			if (*string == '0')
+				op_bits = 6 << 29;
+			else
+				op_bits = 7 << 29;
+		}
+	}
+	add_bits = index << 3; // define element address bits
+	cell_bits = cell; // define cell operation bits
+
+	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
+	
+	return op_code;
+}
+unsigned int opCodeOperation(unsigned int opCode)
+{
+	return opCode >> 29;
+}
+unsigned int opCodeIndex(unsigned int opCode)
+{
+	return (536870904 & opCode) >> 3;
+}
+unsigned int opCodeCell(unsigned int opCode)
+{
+	return opCode & 7;
+}
+OpCode opCodeExtract(unsigned int opCode)
+{
+	OpCode sensitizing;
+
+	sensitizing.op = opCode >> 29;
+	sensitizing.index = (536870904 & opCode) >> 3;
+	sensitizing.cell = opCode & 7;
+	return sensitizing;
+}
+
+
 MemoryDevice::MemoryDevice(int n_elements)
 {
 	int i;
@@ -59,12 +119,29 @@ void MemoryDevice::write_pattern(unsigned int index, unsigned char pattern)
 	*(block + index) = pattern;
 }
 
+void MemoryDevice::internal_write_bit(unsigned int index, unsigned int bit, bool value)
+{
+	unsigned char pattern;
+
+	pattern = *(block + index);
+	// performing write operation
+	pattern = pattern & (~BIT_MASK[bit]); // clear bit to be set
+
+	if (value){
+		pattern = pattern ^ BIT_MASK[bit];
+	}
+
+	*(block + index) = pattern;
+}
+
 void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 {
 	unsigned char pattern;
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
 	FP fp;
+	OpCode victim;
+	bool victim_state_bit;
 
 	pattern = *(block + index);
 
@@ -101,6 +178,19 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 				// Applying fault
 				value = fp.fault;
 			}
+			else{
+				// Apply fault if Sv is a state sensitizing
+				if (fp.Sv >= 3221225472){
+					// extracting victim cell informations
+					victim = opCodeExtract(fp.Sv);
+					victim_state_bit = internal_read_bit(victim.index, victim.cell);
+					if ((victim.op == 6 && !victim_state_bit) || (victim.op == 7 && victim_state_bit)){
+						internal_write_bit(victim.index, victim.cell, fp.fault);
+						// re-read pattern in case it has been modified
+						pattern = *(block + index);
+					}
+				}
+			}
 		}
 	}
 	// performing write operation
@@ -119,12 +209,28 @@ unsigned char MemoryDevice::read_pattern(unsigned int index)
 	return *(block + index);
 }
 
+bool MemoryDevice::internal_read_bit(unsigned int index, unsigned int bit)
+{
+	unsigned char pattern;
+	unsigned char bit_state;
+
+	pattern = *(block + index);
+
+	// verify bit state 0 or 1
+	bit_state = (pattern & BIT_MASK[bit]) >> bit;
+
+	// performing read operation
+	return bit_state ? true : false;
+}
+
 bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 {
 	unsigned char pattern;
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
 	FP fp;
+	OpCode victim;
+	bool victim_state_bit;
 	
 	pattern = *(block + index);
 
@@ -157,9 +263,19 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 
 				*(block + index) = pattern;
 
-				// Applying read output
-				bit_state = fp.read;
 			}
+			else{
+				// Apply fault if Sv is a state sensitizing
+				if (fp.Sv >= 3221225472){
+					// extracting victim cell informations
+					victim = opCodeExtract(fp.Sv);
+					victim_state_bit = internal_read_bit(victim.index, victim.cell);
+					if ((victim.op == 6 && !victim_state_bit) || (victim.op == 7 && victim_state_bit))
+						internal_write_bit(victim.index, victim.cell, fp.fault);
+				}
+			}
+			// Applying read output
+			bit_state = fp.read;
 		}
 	}
 	// save last operation performed
@@ -171,7 +287,7 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 
 void MemoryDevice::apply_simple_fault_single_cell(unsigned int Sa, bool F, bool R)
 {
-	int index = (536870904 & Sa) >> 3;
+	int index = opCodeIndex(Sa);
 	FP *fp = (FP *)malloc(sizeof(FP));
 
 	(*fp).Sa = Sa;
@@ -184,7 +300,7 @@ void MemoryDevice::apply_simple_fault_single_cell(unsigned int Sa, bool F, bool 
 
 void MemoryDevice::apply_simple_fault_two_cell(unsigned int Sa, unsigned int Sv, bool F, bool R)
 {
-	int index = (536870904 & Sa) >> 3;
+	int index = opCodeIndex(Sa);
 	FP *fp = (FP *)malloc(sizeof(FP));
 
 	(*fp).Sa = Sa;

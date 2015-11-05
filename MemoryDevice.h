@@ -1,5 +1,11 @@
 #pragma once
 
+struct OpCode
+{
+	unsigned int op;
+	unsigned int index;
+	unsigned int cell;
+};
 
 struct FP
 {
@@ -59,6 +65,12 @@ private:
 
 	// fault primitive list for this device
 	FP **fp_list;
+
+	// read without applying any fault and register operation
+	bool MemoryDevice::internal_read_bit(unsigned int index, unsigned int bit);
+
+	// write without applying any fault and register operation
+	void MemoryDevice::internal_write_bit(unsigned int index, unsigned int bit, bool value);
 
 	//FP looking_for_fault(bool *bit_ptr);
 };
