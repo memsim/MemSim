@@ -6,6 +6,7 @@
 #include <iostream>
 using namespace std;
 
+// Transform sensitizing fp strings into the code used here
 unsigned int stringToOpcode(char *string, int index, int cell)
 {
 	unsigned int op_bits, add_bits, cell_bits, op_code;

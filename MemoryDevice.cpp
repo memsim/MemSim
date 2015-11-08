@@ -7,43 +7,6 @@ const unsigned char BIT_MASK[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
 const int s_size = 39;
 char *priv_string = (char *)malloc(sizeof(char) * (s_size + 1)); // to test
 
-unsigned int stringToOpcode2(char *string, int index, int cell)
-{
-	unsigned int op_bits, add_bits, cell_bits, op_code;
-
-	if (*(string + 1) == 'w'){
-		if (*(string + 0) == '0')
-			if (*(string + 2) == '0')
-				op_bits = 0;
-			else
-				op_bits = 1 << 29;
-		else
-			if (*(string + 2) == '0')
-				op_bits = 2 << 29;
-			else
-				op_bits = 3 << 29;
-	}
-	else{
-		if (*(string + 1) == 'r'){
-			if (*(string + 0) == '0')
-				op_bits = 4 << 29;
-			else
-				op_bits = 5 << 29;
-		}
-		else{
-			if (*string == '0')
-				op_bits = 6 << 29;
-			else
-				op_bits = 7 << 29;
-		}
-	}
-	add_bits = index << 3; // define element address bits
-	cell_bits = cell; // define cell operation bits
-
-	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
-	
-	return op_code;
-}
 unsigned int opCodeOperation(unsigned int opCode)
 {
 	return opCode >> 29;
@@ -141,7 +104,7 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	unsigned int op_bits, add_bits, cell_bits, op_code;
 	FP fp;
 	OpCode victim;
-	bool victim_state_bit;
+	bool victim_bit_state;
 
 	pattern = *(block + index);
 
@@ -174,20 +137,32 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	if (*(fp_list + index) != NULL){
 		fp = **(fp_list + index);
 		if (op_code == fp.Sa){// compare operation code for the performed operation with fault
-			if (fp.Sv == NULL){
+			if (fp.Sv == NULL){ // simple fault single cell -> type xwy and xrx
 				// Applying fault
 				value = fp.fault;
 			}
-			else{
+			else{ // simple fault two cell -> Sa type xwy and xrx
 				// Apply fault if Sv is a state sensitizing
-				if (fp.Sv >= 3221225472){
+				if (fp.Sv >= 3221225472){ // simple fault two cell -> Sv type x
 					// extracting victim cell informations
 					victim = opCodeExtract(fp.Sv);
-					victim_state_bit = internal_read_bit(victim.index, victim.cell);
-					if ((victim.op == 6 && !victim_state_bit) || (victim.op == 7 && victim_state_bit)){
+					victim_bit_state = internal_read_bit(victim.index, victim.cell);
+					if ((victim.op == 6 && !victim_bit_state) || (victim.op == 7 && victim_bit_state)){
 						internal_write_bit(victim.index, victim.cell, fp.fault);
 						// re-read pattern in case it has been modified
 						pattern = *(block + index);
+					}
+				}
+			}
+		}
+		else{
+			if (fp.Sa >= 3221225472){
+				if (fp.Sv == NULL){ // simple fault single cell -> type x 
+					// extracting victim cell informations
+					victim = opCodeExtract(fp.Sv);
+					// Applying fault
+					if ((victim.op == 6 && !value) || (victim.op == 7 && value)){
+						value = fp.fault;
 					}
 				}
 			}
