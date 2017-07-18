@@ -1,2 +1,4 @@
 # memsim
-Memory functional simulator
+MemSim is a memory functional fault simulator for all single-port simple static faults.
+
+
