@@ -29,6 +29,8 @@ OpCode opCodeExtract(unsigned int opCode)
 	return sensitizing;
 }
 
+MemoryDevice::MemoryDevice(void)
+{}
 
 MemoryDevice::MemoryDevice(int n_elements)
 {
@@ -37,12 +39,13 @@ MemoryDevice::MemoryDevice(int n_elements)
 
 	// allocating memory array 
 	block = (unsigned char *)malloc(sizeof(unsigned char)*n_elements);
-	// allocating pointer to the fault primitives
-	fp_list = (FP **)malloc(sizeof(FP *)*n_elements);
+	// allocating the fault primitives array
+	fp_list = (FPList **)malloc(sizeof(FPList *)*n_elements);
 
-	//teste if all it was allocated
+	//teste if it was all allocated
 
-	// inicialize memory array with 0s e fr_list with NULLs
+
+	// inicialize memory array with 0s e fp_list array with NULLs
 	for (i = 0; i < n_blocks; i++){
 		*(block + i) = 0;
 		*(fp_list + i) = NULL;
@@ -103,8 +106,10 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
 	FP fp;
+	FPList **nextFpList;
 	OpCode aggressor;
 	OpCode victim;
+	bool aggressor_bit_state;
 	bool victim_bit_state;
 
 	pattern = *(block + index);
@@ -129,16 +134,21 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 	cell_bits = bit; // define cell operation bits
 
 	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
-
+	
+	// save last operation performed
 	last_op_code = op_code;
+
+	nextFpList = (fp_list + index);
 	
 	//cout << "op_code = " << op_code << endl;
 
 	// has a fault 
-	if (*(fp_list + index) != NULL){
-		fp = **(fp_list + index);
+	while (*nextFpList != NULL)
+	{
+		
+		fp = (**nextFpList).fp;
 
-		// simple fault single cell - the victim cell is the same aggressor cell
+		// static fault, single cell - the victim cell is the same aggressor cell
 		if (fp.Sv == NULL)
 		{
 			// case sensitizing is xwy
@@ -159,27 +169,50 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 				}
 			}
 		}
-		// simple fault two cell - the victim cell is different from aggressor cell
+		// static fault, two cell - the victim cell is different from aggressor cell
 		else
 		{
-			// this cell is agressor cell
-			// case <xwy;z>
-			if (op_code == fp.Sa)
+			
+			// operation in agressor cell
+			if (op_code == fp.Sa)// case <xwy;z>
 			{
-				//verify victim cell state
+				//verify victim cell state (z)
 				if (fp.Sv >= 3221225472){
 					// extracting victim cell informations
 					victim = opCodeExtract(fp.Sv);
 					victim_bit_state = internal_read_bit(victim.index, victim.cell);
 					if ((victim.op == 6 && !victim_bit_state) || (victim.op == 7 && victim_bit_state)){
 						internal_write_bit(victim.index, victim.cell, fp.fault);
+						
 						// re-read pattern in case it has been modified
 						pattern = *(block + index);
 					}
 				}
 			}
+			// operation in victim cell
 			else
 			{
+				if (op_code == fp.Sv)// case <x;ywz/*/->
+				{
+					//verify aggressor cell state (x)
+					if (fp.Sa >= 3221225472)
+					{// extracting victim cell informations
+						victim = opCodeExtract(fp.Sv);
+						// extracting aggressor cell informations
+						aggressor = opCodeExtract(fp.Sa);
+						aggressor_bit_state = internal_read_bit(aggressor.index, aggressor.cell);
+						if ((aggressor.op == 6 && !aggressor_bit_state) || (aggressor.op == 7 && aggressor_bit_state)){
+							
+							//cout << "operation in victim cell " << fp.fault << endl;
+							//internal_write_bit(victim.index, victim.cell, fp.fault);
+							//cout << internal_read_bit(victim.index, victim.cell) << endl;
+							// re-read pattern in case it has been modified
+							//pattern = *(block + index);
+							value = fp.fault;
+						}
+					}
+				}
+				/* rethink case <x;y>
 				// case <x;y>
 				if (fp.Sa >= 3221225472)
 				{
@@ -195,8 +228,11 @@ void MemoryDevice::write_bit(unsigned int index, unsigned int bit, bool value)
 						}
 					}
 				}
+				*/
 			}
 		}
+		// get next fp on the list
+		nextFpList = &((**nextFpList).next);
 	}
 
 	// performing write operation
@@ -235,7 +271,10 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 	unsigned char bit_state;
 	unsigned int op_bits, add_bits, cell_bits, op_code;
 	FP fp;
+	FPList **nextFpList;
+	OpCode aggressor;
 	OpCode victim;
+	bool aggressor_bit_state;
 	bool victim_state_bit;
 	
 	pattern = *(block + index);
@@ -255,11 +294,17 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 
 	op_code = op_bits ^ add_bits ^ cell_bits; // merge bits into op_code
 
+	nextFpList = (fp_list + index);
+	
 	// has fault
-	if (*(fp_list + index) != NULL){
-		fp = **(fp_list + index);
-		
-		// simple fault single cell - the victim cell is the same aggressor cell
+	//cout << *nextFpList << endl;
+	while (*nextFpList != NULL)
+	{
+		//cout << "fpList " << *nextFpList << " Next " << (**nextFpList).next << endl;
+		//if (*(fp_list + index) != NULL){
+		fp = (**nextFpList).fp;
+
+		// static fault single cell - the victim cell is the same aggressor cell
 		if (fp.Sv == NULL)
 		{
 			// case sensitizing is type xrx
@@ -267,16 +312,17 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 			{
 				// Applying fault
 				internal_write_bit(index, bit, fp.fault);
-				
+
 				// Applying read output
 				bit_state = fp.read;
 			}
 			// case sensitizing is type x
 			// it's only performed in write_bit method
 		}
-		// simple fault two cell - the victim cell is different from aggressor cell
+		// static fault two cell - the victim cell is different from aggressor cell
 		else
 		{
+			// operation in aggressor cell
 			// case sensitizing is type <xrx;y>
 			if (op_code == fp.Sa)
 			{
@@ -286,14 +332,41 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 					// extracting victim cell informations
 					victim = opCodeExtract(fp.Sv);
 					victim_state_bit = internal_read_bit(victim.index, victim.cell);
-					
+
 					if ((victim.op == 6 && !victim_state_bit) || (victim.op == 7 && victim_state_bit))
 						internal_write_bit(victim.index, victim.cell, fp.fault);
 				}
 				// fp.read don't apply in this case
 			}
+			else
+			{
+				// operation in victim cell
+				// case <x;yry/*/->
+				if (op_code == fp.Sv)
+				{
+					//verify aggressor cell state (x)
+					if (fp.Sa >= 3221225472)
+					{// extracting victim cell informations
+						victim = opCodeExtract(fp.Sv);
+						// extracting aggressor cell informations
+						aggressor = opCodeExtract(fp.Sa);
+						aggressor_bit_state = internal_read_bit(aggressor.index, aggressor.cell);
+						if ((aggressor.op == 6 && !aggressor_bit_state) || (aggressor.op == 7 && aggressor_bit_state)){
+							// Applying fault
+							internal_write_bit(index, bit, fp.fault);
+
+							// Applying read output
+							bit_state = fp.read;
+						}
+					}
+				}
+			}
 		}
+		// get next fp on the list
+		nextFpList = &((**nextFpList).next);
 	}
+
+
 	// save last operation performed
 	last_op_code = op_code;
 
@@ -301,35 +374,90 @@ bool MemoryDevice::read_bit(unsigned int index, unsigned int bit)
 	return bit_state ? true : false;
 }
 
-void MemoryDevice::apply_simple_fault_single_cell(unsigned int Sa, bool F, bool R)
+void MemoryDevice::apply_single_cell_static_fault(unsigned int Sa, bool F, bool R)
 {
 	int index = opCodeIndex(Sa);
-	FP *fp = (FP *)malloc(sizeof(FP));
+	FPList *fpList = (FPList *)malloc(sizeof(FPList));
+	FPList **nextFpList = (fp_list + index);
 
-	(*fp).Sa = Sa;
-	(*fp).Sv = NULL;
-	(*fp).fault = F;
-	(*fp).read = R;
+
+	//cout << "apply fault " << fpList << endl;
 	
-	*(fp_list + index) = fp;
+	(*fpList).fp.Sa = Sa;
+	(*fpList).fp.Sv = NULL;
+	(*fpList).fp.fault = F;
+	(*fpList).fp.read = R;
+	(*fpList).next = NULL;
+
+	while (*nextFpList != NULL)
+	{
+		nextFpList = &((**nextFpList).next);
+	}
+
+	*(nextFpList) = fpList;
 }
 
-void MemoryDevice::apply_simple_fault_two_cell(unsigned int Sa, unsigned int Sv, bool F, bool R)
+void MemoryDevice::apply_two_cell_static_fault(unsigned int Sa, unsigned int Sv, bool F, bool R)
 {
-	int index = opCodeIndex(Sa);
-	FP *fp = (FP *)malloc(sizeof(FP));
+	int indexA = opCodeIndex(Sa);
+	int indexV = opCodeIndex(Sv);
+	// Estorage FP and pointer to next FP on list
+	FPList *fpList = NULL;
+	FPList **nextFpList = NULL;
 
-	(*fp).Sa = Sa;
-	(*fp).Sv = Sv;
-	(*fp).fault = F;
-	(*fp).read = R;
 
-	*(fp_list + index) = fp;
+	// Record FP
+	fpList = (FPList *)malloc(sizeof(FPList));
+	
+	(*fpList).fp.Sa = Sa;
+	(*fpList).fp.Sv = Sv;
+	(*fpList).fp.fault = F;
+	(*fpList).fp.read = R;
+	(*fpList).next = NULL;
+ 
+	//cout << "apply fault " << fpList << " " << (*fpList).next << endl;
+
+	// Record FP on the aggressor cell fault list
+	nextFpList = (fp_list + indexA);
+
+	//cout << "apply fault " << fpList << " " << (*fpList).next << endl;
+	
+	while (*nextFpList != NULL)
+	{
+		nextFpList = &((**nextFpList).next);
+
+		//cout << "-apply fault " << fpList << " " << (*fpList).next << endl;
+	}
+
+	*(nextFpList) = fpList;
+
+	if (indexA != indexV)
+	{
+		// Record FP on the victim cell fault list
+		fpList = (FPList *)malloc(sizeof(FPList));
+
+		(*fpList).fp.Sa = Sa;
+		(*fpList).fp.Sv = Sv;
+		(*fpList).fp.fault = F;
+		(*fpList).fp.read = R;
+		(*fpList).next = NULL;
+
+		nextFpList = (fp_list + indexV);
+
+		while (*nextFpList != NULL)
+		{
+			nextFpList = &((**nextFpList).next);
+		}
+
+		*(nextFpList) = fpList;
+	}
+	//cout << "apply fault " << fpList << " " << (*fpList).next << endl;
 }
 
 MemoryDevice::~MemoryDevice()
 {
-	free(block);
+	/*free(block);
 	free(priv_string); // to test
+	*/
 	//free fault primitives
 }

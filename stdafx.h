@@ -12,6 +12,9 @@
 #include <stdlib.h>
 #include <iostream>
 #include <vector>
+#include <time.h>
+#include <windows.h>
+#include <list>
 
 
 // TODO: reference additional headers your program requires here

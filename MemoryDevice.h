@@ -15,11 +15,20 @@ struct FP
 	bool read;
 };
 
+struct FPList
+{
+	FP fp;
+	FPList *next;
+};
+
 // MemoryDevice class definition.
 class MemoryDevice
 {
 public:
 	
+	// Default Constructor
+	MemoryDevice();
+
 	// Constructor, create the memory array of n_elements with 1 byte each
 	MemoryDevice(int n_elements);
 
@@ -45,10 +54,10 @@ public:
 	bool read_bit(unsigned int index, unsigned int bit);
 
 	// Insert a Simple Fault Single Cell
-	void apply_simple_fault_single_cell(unsigned int Sa, bool F, bool R);
+	void apply_single_cell_static_fault(unsigned int Sa, bool F, bool R);
 
 	// Insert a Simple Fault Two Cell
-	void apply_simple_fault_two_cell(unsigned int Sa, unsigned int Sv, bool F, bool R);
+	void apply_two_cell_static_fault(unsigned int Sa, unsigned int Sv, bool F, bool R);
 
 	// Destructor, deallocate the memory array
 	~MemoryDevice();
@@ -64,7 +73,7 @@ private:
 	unsigned int last_op_code;
 
 	// fault primitive list for this device
-	FP **fp_list;
+	FPList **fp_list;
 
 	// read without applying any fault and register operation
 	bool MemoryDevice::internal_read_bit(unsigned int index, unsigned int bit);
